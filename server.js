@@ -2,9 +2,7 @@ const express = require("express");
 const mysql = require("mysql");
 const cors = require("cors");
 const path = require("path");
-const dotenv = require("dotenv");
-
-dotenv.config();
+const { SSMClient, GetParameterCommand } = require("@aws-sdk/client-ssm");
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
@@ -13,46 +11,41 @@ app.use(express.json());
 
 const port = 80;
 
-// Create a connection pool
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME, // Use the database name you specified in RDS
-  connectionLimit: 10, // Adjust based on your needs
-});
+// Initialize AWS SSM client
+const ssmClient = new SSMClient({ region: "us-east-1" }); // Replace with your region
 
-// Initialize table and schema
-const initializeTable = () => {
-  const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS student_details (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) NOT NULL,
-      age INT NOT NULL,
-      gender VARCHAR(50) NOT NULL
-    )
-  `;
-
-  pool.getConnection((err, connection) => {
-    if (err) {
-      console.error("Error connecting to database:", err);
-      return;
-    }
-
-    connection.query(createTableQuery, (err) => {
-      connection.release(); // Release the connection back to the pool
-      if (err) {
-        console.error("Error creating table:", err);
-        return;
-      }
-      console.log("Table created or already exists.");
-    });
+// Function to retrieve a parameter from SSM
+const getParameter = async (name, decrypt = false) => {
+  const command = new GetParameterCommand({
+    Name: name,
+    WithDecryption: decrypt, // Decrypt SecureString parameters
   });
+  const response = await ssmClient.send(command);
+  return response.Parameter.Value;
 };
 
-// Initialize the table when the app starts
-initializeTable();
+// Retrieve RDS credentials from SSM
+const initializeDatabaseConfig = async () => {
+  const dbConfig = {
+    host: await getParameter("/myapp/rds/endpoint"),
+    user: await getParameter("/myapp/rds/username"),
+    password: await getParameter("/myapp/rds/password", true), // Decrypt the password
+    database: await getParameter("/myapp/rds/database_name"),
+  };
+  return dbConfig;
+};
+
+// Create a connection pool
+let pool;
+initializeDatabaseConfig()
+  .then((dbConfig) => {
+    pool = mysql.createPool(dbConfig);
+    console.log("Database configuration loaded successfully.");
+  })
+  .catch((err) => {
+    console.error("Failed to load database configuration:", err);
+    process.exit(1); // Exit the application if configuration fails
+  });
 
 // Routes
 app.post("/add_user", (req, res) => {
@@ -74,60 +67,7 @@ app.post("/add_user", (req, res) => {
   });
 });
 
-app.get("/students", (req, res) => {
-  const sql = "SELECT * FROM student_details";
-  pool.query(sql, (err, result) => {
-    if (err) {
-      console.error("Error fetching students:", err);
-      return res.status(500).json({ message: "Server error" });
-    }
-    return res.json(result);
-  });
-});
-
-app.get("/get_student/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = "SELECT * FROM student_details WHERE `id`= ?";
-  pool.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error("Error fetching student:", err);
-      return res.status(500).json({ message: "Server error" });
-    }
-    return res.json(result);
-  });
-});
-
-app.post("/edit_user/:id", (req, res) => {
-  const id = req.params.id;
-  const { name, email, age, gender } = req.body;
-  if (!name || !email || !age || !gender) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  const sql =
-    "UPDATE student_details SET `name`=?, `email`=?, `age`=?, `gender`=? WHERE id=?";
-  const values = [name, email, age, gender, id];
-
-  pool.query(sql, values, (err, result) => {
-    if (err) {
-      console.error("Error updating student:", err);
-      return res.status(500).json({ message: "Something unexpected occurred" });
-    }
-    return res.json({ success: "Student updated successfully" });
-  });
-});
-
-app.delete("/delete/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = "DELETE FROM student_details WHERE id=?";
-  pool.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error("Error deleting student:", err);
-      return res.status(500).json({ message: "Something unexpected occurred" });
-    }
-    return res.json({ success: "Student deleted successfully" });
-  });
-});
+// Other routes...
 
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);
