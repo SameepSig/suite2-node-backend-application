@@ -58,7 +58,7 @@ const createTableIfNotExists = async (pool) => {
 };
 
 // Create a connection pool and initialize the database
-let pool;q
+let pool;
 initializeDatabaseConfig()
   .then(async (dbConfig) => {
     pool = mysql.createPool(dbConfig);
