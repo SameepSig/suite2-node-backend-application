@@ -58,7 +58,7 @@ const createTableIfNotExists = async (pool) => {
 };
 
 // Create a connection pool and initialize the database
-let pool;
+let pool;q
 initializeDatabaseConfig()
   .then(async (dbConfig) => {
     pool = mysql.createPool(dbConfig);
@@ -72,12 +72,20 @@ initializeDatabaseConfig()
     process.exit(1); // Exit the application if configuration or table creation fails
   });
 
+// Middleware to check if pool is initialized
+app.use((req, res, next) => {
+  if (!pool) {
+    return res.status(500).json({ message: "Database pool is not initialized" });
+  }
+  next();
+});
+
 // Routes
 app.post("/add_user", (req, res) => {
   const sql =
     "INSERT INTO student_details (`name`,`email`,`age`,`gender`) VALUES (?, ?, ?, ?)";
   const values = [req.body.name, req.body.email, req.body.age, req.body.gender];
-  db.query(sql, values, (err, result) => {
+  pool.query(sql, values, (err, result) => {
     if (err)
       return res.json({ message: "Something unexpected has occurred: " + err });
     return res.json({ success: "Student added successfully" });
@@ -86,7 +94,7 @@ app.post("/add_user", (req, res) => {
 
 app.get("/students", (req, res) => {
   const sql = "SELECT * FROM student_details";
-  db.query(sql, (err, result) => {
+  pool.query(sql, (err, result) => {
     if (err) return res.json({ message: "Server error" });
     return res.json(result);
   });
@@ -95,7 +103,7 @@ app.get("/students", (req, res) => {
 app.get("/get_student/:id", (req, res) => {
   const id = req.params.id;
   const sql = "SELECT * FROM student_details WHERE `id`= ?";
-  db.query(sql, [id], (err, result) => {
+  pool.query(sql, [id], (err, result) => {
     if (err) return res.json({ message: "Server error" });
     return res.json(result);
   });
@@ -112,7 +120,7 @@ app.post("/edit_user/:id", (req, res) => {
     req.body.gender,
     id,
   ];
-  db.query(sql, values, (err, result) => {
+  pool.query(sql, values, (err, result) => {
     if (err)
       return res.json({ message: "Something unexpected has occurred: " + err });
     return res.json({ success: "Student updated successfully" });
@@ -123,7 +131,7 @@ app.delete("/delete/:id", (req, res) => {
   const id = req.params.id;
   const sql = "DELETE FROM student_details WHERE id=?";
   const values = [id];
-  db.query(sql, values, (err, result) => {
+  pool.query(sql, values, (err, result) => {
     if (err)
       return res.json({ message: "Something unexpected has occurred: " + err });
     return res.json({ success: "Student deleted successfully" });
