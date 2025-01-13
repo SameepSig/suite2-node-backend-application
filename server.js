@@ -35,39 +35,98 @@ const initializeDatabaseConfig = async () => {
   return dbConfig;
 };
 
-// Create a connection pool
+// Function to create a table if it doesn't exist
+const createTableIfNotExists = async (pool) => {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS student_details (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      username VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  try {
+    await pool.query(createTableQuery);
+    console.log("Table 'student_details' created or already exists.");
+  } catch (err) {
+    console.error("Failed to create table:", err);
+    throw err; // Re-throw the error to handle it in the calling function
+  }
+};
+
+// Create a connection pool and initialize the database
 let pool;
 initializeDatabaseConfig()
-  .then((dbConfig) => {
+  .then(async (dbConfig) => {
     pool = mysql.createPool(dbConfig);
     console.log("Database configuration loaded successfully.");
+
+    // Create the table if it doesn't exist
+    await createTableIfNotExists(pool);
   })
   .catch((err) => {
-    console.error("Failed to load database configuration:", err);
-    process.exit(1); // Exit the application if configuration fails
+    console.error("Failed to load database configuration or create table:", err);
+    process.exit(1); // Exit the application if configuration or table creation fails
   });
 
 // Routes
 app.post("/add_user", (req, res) => {
-  const { name, email, age, gender } = req.body;
-  if (!name || !email || !age || !gender) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
   const sql =
     "INSERT INTO student_details (`name`,`email`,`age`,`gender`) VALUES (?, ?, ?, ?)";
-  const values = [name, email, age, gender];
-
-  pool.query(sql, values, (err, result) => {
-    if (err) {
-      console.error("Error adding student:", err);
-      return res.status(500).json({ message: "Something unexpected occurred" });
-    }
+  const values = [req.body.name, req.body.email, req.body.age, req.body.gender];
+  db.query(sql, values, (err, result) => {
+    if (err)
+      return res.json({ message: "Something unexpected has occurred: " + err });
     return res.json({ success: "Student added successfully" });
   });
 });
 
-// Other routes...
+app.get("/students", (req, res) => {
+  const sql = "SELECT * FROM student_details";
+  db.query(sql, (err, result) => {
+    if (err) return res.json({ message: "Server error" });
+    return res.json(result);
+  });
+});
+
+app.get("/get_student/:id", (req, res) => {
+  const id = req.params.id;
+  const sql = "SELECT * FROM student_details WHERE `id`= ?";
+  db.query(sql, [id], (err, result) => {
+    if (err) return res.json({ message: "Server error" });
+    return res.json(result);
+  });
+});
+
+app.post("/edit_user/:id", (req, res) => {
+  const id = req.params.id;
+  const sql =
+    "UPDATE student_details SET `name`=?, `email`=?, `age`=?, `gender`=? WHERE id=?";
+  const values = [
+    req.body.name,
+    req.body.email,
+    req.body.age,
+    req.body.gender,
+    id,
+  ];
+  db.query(sql, values, (err, result) => {
+    if (err)
+      return res.json({ message: "Something unexpected has occurred: " + err });
+    return res.json({ success: "Student updated successfully" });
+  });
+});
+
+app.delete("/delete/:id", (req, res) => {
+  const id = req.params.id;
+  const sql = "DELETE FROM student_details WHERE id=?";
+  const values = [id];
+  db.query(sql, values, (err, result) => {
+    if (err)
+      return res.json({ message: "Something unexpected has occurred: " + err });
+    return res.json({ success: "Student deleted successfully" });
+  });
+});
 
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);
