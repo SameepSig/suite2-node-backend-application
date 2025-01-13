@@ -40,8 +40,10 @@ const createTableIfNotExists = async (pool) => {
   const createTableQuery = `
     CREATE TABLE IF NOT EXISTS student_details (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      username VARCHAR(255) NOT NULL,
+      name VARCHAR(255) NOT NULL,
       email VARCHAR(255) NOT NULL,
+      age INT, -- Define age as an integer
+      gender VARCHAR(10), -- Define gender as a string
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `;
